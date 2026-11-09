@@ -5,130 +5,268 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="내 음악">
-<meta name="theme-color" content="#111318">
+<meta name="theme-color" content="#d8e0fd" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1c2042" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
 <title>내 음악</title>
 <style>
   :root {
-    --bg: #f4f5f7; --card: #ffffff; --text: #15171c; --sub: #6b7280;
-    --line: #e5e7eb; --accent: #ff4d6d; --accent-weak: #ffe4e9; --btn: #eef0f3;
+    --text: #2b306b; --sub: #6c73a8;
+    --glass: rgba(255,255,255,.34); --glass-strong: rgba(255,255,255,.56);
+    --glass-border: rgba(255,255,255,.78);
+    --shadow: 0 8px 26px rgba(92,104,214,.18);
+    --icon-shadow: drop-shadow(0 1px 1.5px rgba(70,80,190,.5));
+    --accent: #6f78ec; --accent-2: #9ba2ff; --on-accent: #ffffff;
+    --holo: #f3d2ff, #c9d6ff, #bdf0f2, #fbf3c8, #ffd3ea, #d6caff, #c2e6ff, #f3d2ff;
+    --page: radial-gradient(120% 70% at 0% 0%, #eef1ff 0%, transparent 60%),
+            radial-gradient(90% 60% at 100% 100%, #f7effe 0%, transparent 60%),
+            linear-gradient(165deg, #d8e0fd 0%, #c7d1fa 55%, #d8d4fb 100%);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #111318; --card: #1b1e25; --text: #f3f4f6; --sub: #9ca3af;
-      --line: #2a2e37; --accent: #ff5c7a; --accent-weak: #3a1f27; --btn: #262a33;
+      --text: #eef0ff; --sub: #a9b0e2;
+      --glass: rgba(255,255,255,.09); --glass-strong: rgba(255,255,255,.17);
+      --glass-border: rgba(255,255,255,.22);
+      --shadow: 0 8px 26px rgba(0,0,0,.35);
+      --icon-shadow: drop-shadow(0 1px 2px rgba(0,0,0,.5));
+      --accent: #8f97ff; --accent-2: #b3b8ff;
+      --page: radial-gradient(120% 70% at 0% 0%, #343a7a 0%, transparent 60%),
+              radial-gradient(90% 60% at 100% 100%, #3d2f6e 0%, transparent 60%),
+              linear-gradient(165deg, #1c2042 0%, #222857 55%, #2a2352 100%);
     }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; }
+  html { min-height: 100%; background: #cfd8fc; background-image: var(--page); background-attachment: fixed; }
+  @media (prefers-color-scheme: dark) { html { background-color: #1f2348; } }
   body {
-    background: var(--bg); color: var(--text);
+    margin: 0; color: var(--text); min-height: 100dvh;
     font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", sans-serif;
-    display: flex; flex-direction: column;
-    padding: env(safe-area-inset-top) 0 0;
+    -webkit-user-select: none; user-select: none;
   }
-  header {
-    display: flex; align-items: center; gap: 8px;
-    padding: 12px 16px 8px;
+  button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
+  .ic { width: 24px; height: 24px; fill: currentColor; display: block; }
+  .ic.st { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* 화면 전체를 덮는 고정 레이아웃: 아이폰 하단 여백 방지 */
+  .view {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    background-color: #cfd8fc; background-image: var(--page);
+    transition: transform .32s cubic-bezier(.2,.8,.2,1), opacity .32s;
   }
-  header h1 { font-size: 24px; margin: 0; flex: 1; }
-  .icon-btn {
-    border: 0; background: var(--btn); color: var(--text);
-    border-radius: 999px; height: 36px; padding: 0 14px; font-size: 14px; font-weight: 600;
+  @media (prefers-color-scheme: dark) { .view { background-color: #1f2348; } }
+  #nowView { transform: translateY(100%); opacity: 0; pointer-events: none; }
+  body.show-now #nowView { transform: none; opacity: 1; pointer-events: auto; }
+  body.show-now #listView { opacity: 0; pointer-events: none; }
+
+  /* 유리 질감 */
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,.65);
   }
-  .icon-btn.accent { background: var(--accent); color: #fff; }
-  .search { padding: 0 16px 8px; }
-  .search input {
-    width: 100%; border: 1px solid var(--line); background: var(--card); color: var(--text);
-    border-radius: 10px; padding: 9px 12px; font-size: 16px;
+  .round { border-radius: 999px; display: grid; place-items: center; }
+  .wico { color: #fff; }
+  .wico.glass { background: linear-gradient(145deg, rgba(255,255,255,.42), rgba(140,152,240,.38)); }
+  @media (prefers-color-scheme: dark) { .wico.glass { background: linear-gradient(145deg, rgba(255,255,255,.16), rgba(140,152,240,.2)); } }
+  .wico .ic { filter: var(--icon-shadow); }
+
+  /* 앨범 아트 (둥근 정사각형) */
+  .art { position: relative; overflow: hidden; background: var(--glass-strong); flex: none; }
+  .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* 앨범 아트가 없을 때: 홀로그램 CD */
+  .art .ph { width: 100%; height: 100%; display: grid; place-items: center;
+    background: linear-gradient(150deg, rgba(255,255,255,.55), rgba(205,214,255,.35)); }
+  .cd {
+    width: 80%; aspect-ratio: 1; border-radius: 50%; position: relative;
+    background:
+      radial-gradient(circle, transparent 0 7%, rgba(255,255,255,.95) 7.5% 15%, rgba(214,222,255,.85) 15.5% 21%, rgba(255,255,255,.7) 21.5% 23%, transparent 23.5%),
+      radial-gradient(circle at 35% 30%, rgba(255,255,255,.75), transparent 55%),
+      conic-gradient(from var(--r, 0deg), var(--holo));
+    -webkit-mask: radial-gradient(circle, transparent 0 7%, #000 7.5%); mask: radial-gradient(circle, transparent 0 7%, #000 7.5%);
+    box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.85);
   }
-  .meta { padding: 0 16px 6px; color: var(--sub); font-size: 13px; }
-  #list { list-style: none; margin: 0; padding: 0 0 8px; overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; }
-  #list li {
-    display: flex; align-items: center; gap: 12px;
-    padding: 11px 16px; border-bottom: 1px solid var(--line);
-  }
-  #list li .num { width: 26px; color: var(--sub); font-size: 13px; text-align: right; flex: none; font-variant-numeric: tabular-nums; }
-  #list li .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #list li.current { background: var(--accent-weak); }
-  #list li.current .name { color: var(--accent); font-weight: 600; }
-  #list li .del { border: 0; background: none; color: var(--sub); font-size: 18px; padding: 4px 6px; }
-  .empty { padding: 48px 24px; text-align: center; color: var(--sub); }
+
+  /* ---------- 재생 목록 화면 ---------- */
+  .list-head { display: flex; align-items: center; gap: 12px; padding: 14px 20px 10px; }
+  .list-head .t { flex: 1; min-width: 0; }
+  .list-head h1 { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -.5px; }
+  .list-head .count { font-size: 13px; color: var(--sub); }
+  .head-btn { width: 44px; height: 44px; }
+  .head-btn .ic { width: 22px; height: 22px; }
+  .head-btn.add { background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.55), transparent 55%), linear-gradient(145deg, var(--accent-2), var(--accent)); }
+  .search { margin: 6px 20px 12px; border-radius: 16px; display: flex; align-items: center; gap: 8px; padding: 0 14px; color: var(--sub); }
+  .search .ic { width: 18px; height: 18px; flex: none; }
+  .search input { flex: 1; border: 0; background: none; color: var(--text); font-size: 16px; padding: 12px 0; outline: none; min-width: 0; }
+  .search input::placeholder { color: var(--sub); }
+  #list { list-style: none; margin: 0; padding: 4px 0 16px; overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; }
+  #list li { display: flex; align-items: center; gap: 14px; padding: 8px 12px; margin: 2px 10px; border-radius: 20px; border: 1px solid transparent; }
+  #list li.current { background: var(--glass); border-color: var(--glass-border); box-shadow: var(--shadow); }
+  #list li .art { width: 50px; height: 50px; border-radius: 14px; border: 1px solid var(--glass-border); box-shadow: 0 4px 12px rgba(92,104,214,.18); }
+  #list li .txt { flex: 1; min-width: 0; }
+  #list li .ti, #list li .ar { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #list li .ti { font-size: 15px; font-weight: 650; }
+  #list li .ar { font-size: 13px; color: var(--sub); }
+  #list li.current .ti { color: var(--accent); }
+  #list li .del { width: 32px; height: 32px; color: var(--sub); opacity: .7; }
+  #list li .del .ic { width: 16px; height: 16px; }
+  .eq { display: flex; gap: 2px; align-items: flex-end; height: 14px; }
+  .eq i { width: 3px; background: var(--accent); border-radius: 2px; height: 40%; }
+  .playing .eq i { animation: eq 0.9s ease-in-out infinite; }
+  .eq i:nth-child(2) { animation-delay: -.3s !important; height: 80%; }
+  .eq i:nth-child(3) { animation-delay: -.6s !important; height: 60%; }
+  @keyframes eq { 0%,100% { height: 25%; } 50% { height: 100%; } }
+  .empty { padding: 40px 28px; text-align: center; color: var(--sub); line-height: 1.7; }
   .empty b { color: var(--text); }
 
-  #player {
-    background: var(--card); border-top: 1px solid var(--line);
-    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  /* 미니 플레이어 */
+  #mini { margin: 4px 14px 12px; border-radius: 26px; padding: 10px 12px; display: flex; align-items: center; gap: 12px; }
+  #mini[hidden] { display: none; }
+  #mini .art { width: 46px; height: 46px; border-radius: 13px; border: 1px solid var(--glass-border); }
+  #mini .txt { flex: 1; min-width: 0; }
+  #mini .ti { font-weight: 650; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #mini .ar { font-size: 12px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #mini .mbtn { width: 40px; height: 40px; color: var(--sub); }
+  #mini .mbtn .ic { width: 20px; height: 20px; }
+  #mini .mplay { width: 46px; height: 46px; color: #fff; }
+  #mini .mplay .ic { width: 22px; height: 22px; }
+
+  /* ---------- 재생 화면 ---------- */
+  .top { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; }
+  .top .label { font-size: 13px; font-weight: 700; color: var(--sub); letter-spacing: .5px; }
+  .top button { width: 44px; height: 44px; }
+  .top button .ic { width: 20px; height: 20px; }
+  .now-body {
+    flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: clamp(18px, 4dvh, 40px); padding: 0 28px clamp(8px, 3dvh, 32px);
   }
-  #np { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 22px; }
-  .seek { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--sub); font-variant-numeric: tabular-nums; margin: 6px 0 4px; }
-  .seek input { flex: 1; accent-color: var(--accent); }
-  .controls { display: flex; align-items: center; justify-content: space-between; }
-  .controls button {
-    border: 0; background: none; color: var(--text); width: 52px; height: 52px; border-radius: 999px;
-    display: grid; place-items: center; position: relative;
+  .art-frame { padding: 12px; border-radius: 38px; }
+  #nowArt { width: min(72vw, 40dvh, 340px); aspect-ratio: 1; height: auto; border-radius: 28px; }
+  .meta { text-align: center; width: 100%; max-width: 380px; }
+  #nowTitle { font-size: 22px; font-weight: 800; letter-spacing: -.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #nowArtist { font-size: 15px; color: var(--sub); margin-top: 4px; min-height: 21px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seek { width: 100%; max-width: 380px; }
+  .seek input {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 6px; margin: 0; outline: none;
+    background: linear-gradient(90deg, var(--accent-2), var(--accent)) 0 / var(--p, 0%) 100% no-repeat, rgba(255,255,255,.55);
+    box-shadow: inset 0 1px 2px rgba(92,104,214,.25);
   }
-  .controls button svg { width: 26px; height: 26px; fill: currentColor; }
-  .controls button.mode svg { width: 22px; height: 22px; }
-  .controls button.mode { color: var(--sub); }
-  .controls button.mode.on { color: var(--accent); }
-  .controls button.mode .badge { position: absolute; right: 9px; bottom: 9px; font-size: 9px; font-weight: 800; }
-  #playBtn { background: var(--accent); color: #fff; width: 62px; height: 62px; }
-  #playBtn svg { width: 30px; height: 30px; }
-  .controls button:disabled { opacity: .35; }
-  #status { font-size: 12px; color: var(--sub); text-align: center; min-height: 16px; }
+  .seek input::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
+    background: #fff; box-shadow: 0 2px 8px rgba(92,104,214,.45); border: 0;
+  }
+  .seek input::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 0; }
+  .times { display: flex; justify-content: space-between; font-size: 12px; color: var(--sub); margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .controls { width: 100%; max-width: 380px; display: flex; align-items: center; justify-content: space-between; }
+  .cbtn { width: 50px; height: 50px; position: relative; opacity: .9; }
+  .cbtn .ic { width: 22px; height: 22px; }
+  .cbtn.on { opacity: 1; background: linear-gradient(145deg, var(--accent-2), var(--accent)); border-color: rgba(255,255,255,.6); }
+  .cbtn .badge { position: absolute; top: 8px; right: 9px; font-size: 10px; font-weight: 900; color: #fff; }
+  .skip { width: 62px; height: 62px; }
+  .skip .ic { width: 26px; height: 26px; }
+  .play, .mplay {
+    background: radial-gradient(circle at 30% 22%, rgba(255,255,255,.6), transparent 50%), linear-gradient(145deg, var(--accent-2), var(--accent));
+    box-shadow: 0 0 0 4px rgba(255,255,255,.55), 0 10px 26px rgba(108,116,232,.45);
+  }
+  .play { width: 84px; height: 84px; color: var(--on-accent); }
+  .play .ic { width: 34px; height: 34px; filter: drop-shadow(0 1px 2px rgba(60,70,180,.45)); }
+  button:active { transform: scale(.95); }
+  button:disabled { opacity: .35; }
+  #toast {
+    position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: rgba(43,48,107,.82); color: #fff; padding: 8px 16px; border-radius: 999px; font-size: 13px;
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+    opacity: 0; transition: opacity .2s; pointer-events: none; white-space: nowrap; z-index: 10;
+  }
+  #toast.show { opacity: 1; }
 </style>
 </head>
 <body>
-  <header>
-    <h1>내 음악</h1>
-    <button class="icon-btn accent" id="addBtn">+ 추가</button>
-    <button class="icon-btn" id="clearBtn">전체 삭제</button>
-  </header>
-  <div class="search"><input id="q" type="search" placeholder="곡 검색" autocomplete="off"></div>
-  <div class="meta" id="meta"></div>
-  <ul id="list"></ul>
-  <input type="file" id="fileInput" accept="audio/mpeg,audio/mp3,.mp3,audio/*" multiple hidden>
-
-  <section id="player">
-    <div id="np">재생 중인 곡 없음</div>
-    <div class="seek">
-      <span id="cur">0:00</span>
-      <input type="range" id="seek" min="0" max="0" step="0.1" value="0">
-      <span id="dur">0:00</span>
+  <!-- 재생 목록 화면 -->
+  <section class="view" id="listView">
+    <div class="list-head">
+      <div class="t">
+        <h1>내 음악</h1>
+        <div class="count" id="count"></div>
+      </div>
+      <button class="head-btn glass round wico" id="clearBtn" aria-label="전체 삭제"></button>
+      <button class="head-btn add glass round wico" id="addBtn" aria-label="곡 추가"></button>
     </div>
-    <div class="controls">
-      <button class="mode" id="shuffleBtn" aria-label="무작위 재생">
-        <svg viewBox="0 0 24 24"><path d="M10.6 9.2 5.4 4 4 5.4l5.2 5.2 1.4-1.4ZM14.5 4l2 2L4 18.6 5.4 20 18 7.5l2 2V4h-5.5Zm.3 9.4-1.4 1.4 3.1 3.1-2 2.1H20v-5.5l-2 2-3.2-3.1Z"/></svg>
-      </button>
-      <button id="prevBtn" aria-label="이전 곡">
-        <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
-      </button>
-      <button id="playBtn" aria-label="재생">
-        <svg viewBox="0 0 24 24" id="playIcon"><path d="M8 5v14l11-7z"/></svg>
-      </button>
-      <button id="nextBtn" aria-label="다음 곡">
-        <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
-      </button>
-      <button class="mode" id="repeatBtn" aria-label="반복">
-        <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
-        <span class="badge" id="repeatBadge"></span>
-      </button>
-      <button class="mode" id="stopBtn" aria-label="종료">
-        <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
-      </button>
+    <label class="search glass"><span id="searchIcon"></span><input id="q" type="search" placeholder="곡, 가수 검색" autocomplete="off"></label>
+    <ul id="list"></ul>
+    <div id="mini" class="glass" hidden>
+      <div class="art" id="miniArt"></div>
+      <div class="txt"><div class="ti" id="miniTitle"></div><div class="ar" id="miniArtist"></div></div>
+      <button class="mbtn mplay round wico" id="miniPlay" aria-label="재생"></button>
+      <button class="mbtn round" id="miniStop" aria-label="종료"></button>
     </div>
-    <div id="status"></div>
   </section>
+
+  <!-- 재생 화면 -->
+  <section class="view" id="nowView" aria-hidden="true">
+    <div class="top">
+      <button class="glass round wico" id="backBtn" aria-label="재생 목록"></button>
+      <span class="label">재생 중</span>
+      <button class="glass round wico" id="stopBtn" aria-label="종료"></button>
+    </div>
+    <div class="now-body">
+      <div class="art-frame glass"><div class="art" id="nowArt"></div></div>
+      <div class="meta">
+        <div id="nowTitle">재생 중인 곡 없음</div>
+        <div id="nowArtist"></div>
+      </div>
+      <div class="seek">
+        <input type="range" id="seek" min="0" max="0" step="0.1" value="0" aria-label="재생 위치">
+        <div class="times"><span id="cur">0:00</span><span id="dur">0:00</span></div>
+      </div>
+      <div class="controls">
+        <button class="cbtn glass round wico" id="shuffleBtn" aria-label="무작위 재생"></button>
+        <button class="skip glass round wico" id="prevBtn" aria-label="이전 곡"></button>
+        <button class="play round" id="playBtn" aria-label="재생"></button>
+        <button class="skip glass round wico" id="nextBtn" aria-label="다음 곡"></button>
+        <button class="cbtn glass round wico" id="repeatBtn" aria-label="반복"></button>
+      </div>
+    </div>
+  </section>
+
+  <input type="file" id="fileInput" accept="audio/mpeg,audio/mp3,.mp3,audio/*" multiple hidden>
+  <div id="toast"></div>
 
 <script>
 (() => {
-  const PLAY_PATH = 'M8 5v14l11-7z';
-  const PAUSE_PATH = 'M6 5h4v14H6zm8 0h4v14h-4z';
   const $ = id => document.getElementById(id);
+
+  // ---------- 아이콘 ----------
+  const ICONS = {
+    play: '<path d="M8 5.6v12.8a1 1 0 0 0 1.53.85l10.2-6.4a1 1 0 0 0 0-1.7L9.53 4.75A1 1 0 0 0 8 5.6z"/>',
+    pause: '<rect x="6" y="5" width="4.5" height="14" rx="1.3"/><rect x="13.5" y="5" width="4.5" height="14" rx="1.3"/>',
+    prev: '<rect x="4.5" y="5" width="2.6" height="14" rx="1.2"/><path d="M19.5 6.3v11.4a1 1 0 0 1-1.55.84l-8.6-5.7a1 1 0 0 1 0-1.68l8.6-5.7a1 1 0 0 1 1.55.84z"/>',
+    next: '<rect x="16.9" y="5" width="2.6" height="14" rx="1.2"/><path d="M4.5 6.3v11.4a1 1 0 0 0 1.55.84l8.6-5.7a1 1 0 0 0 0-1.68l-8.6-5.7A1 1 0 0 0 4.5 6.3z"/>',
+    stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2.2"/>',
+    shuffle: { st: 1, d: '<path d="M3 7h3.2c2 0 3.2 1 4.3 2.8l2.6 4.4c1.1 1.8 2.3 2.8 4.3 2.8H21"/><path d="M18 14l3 3-3 3"/><path d="M3 17h3.2c1.3 0 2.3-.4 3.1-1.2"/><path d="M14 8.2c.8-.8 1.8-1.2 3.1-1.2H21"/><path d="M18 4l3 3-3 3"/>' },
+    repeat: { st: 1, d: '<path d="M17 2.5l3 3-3 3"/><path d="M4 11.5v-2a4 4 0 0 1 4-4h12"/><path d="M7 21.5l-3-3 3-3"/><path d="M20 12.5v2a4 4 0 0 1-4 4H4"/>' },
+    list: { st: 1, d: '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01" stroke-width="3"/>' },
+    plus: { st: 1, d: '<path d="M12 5v14M5 12h14" stroke-width="2.4"/>' },
+    trash: { st: 1, d: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>' },
+    x: { st: 1, d: '<path d="M6 6l12 12M18 6L6 18"/>' },
+    search: { st: 1, d: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>' },
+    note: { st: 1, d: '<path d="M9 18V5.5l11-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>' }
+  };
+  const icon = name => {
+    const v = ICONS[name];
+    return typeof v === 'string'
+      ? `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${v}</svg>`
+      : `<svg class="ic st" viewBox="0 0 24 24" aria-hidden="true">${v.d}</svg>`;
+  };
+  const setIcon = (id, name) => { $(id).innerHTML = icon(name); };
+  setIcon('addBtn', 'plus'); setIcon('clearBtn', 'trash'); setIcon('searchIcon', 'search');
+  setIcon('backBtn', 'list'); setIcon('stopBtn', 'stop'); setIcon('miniStop', 'stop');
+  setIcon('prevBtn', 'prev'); setIcon('nextBtn', 'next'); setIcon('shuffleBtn', 'shuffle');
+  $('repeatBtn').innerHTML = icon('repeat') + '<span class="badge" id="repeatBadge"></span>';
 
   // ---------- IndexedDB (mp3는 기기 안에만 저장) ----------
   const DB_NAME = 'local-music', STORE = 'tracks';
@@ -153,13 +291,102 @@
   const dbDel = id => tx('readwrite', s => s.delete(id));
   const dbClear = () => tx('readwrite', s => s.clear());
 
+  // ---------- ID3 태그 읽기 (앨범 아트, 제목, 가수) ----------
+  const synch = (b, i) => (b[i] & 0x7f) << 21 | (b[i + 1] & 0x7f) << 14 | (b[i + 2] & 0x7f) << 7 | (b[i + 3] & 0x7f);
+  const be32 = (b, i) => (b[i] << 24 | b[i + 1] << 16 | b[i + 2] << 8 | b[i + 3]) >>> 0;
+  function unsync(b) {
+    const out = [];
+    for (let i = 0; i < b.length; i++) {
+      out.push(b[i]);
+      if (b[i] === 0xff && b[i + 1] === 0x00) i++;
+    }
+    return Uint8Array.from(out);
+  }
+  function decodeText(enc, bytes) {
+    let s;
+    try {
+      if (enc === 1) {
+        const le = !(bytes[0] === 0xfe && bytes[1] === 0xff);
+        const start = (bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff) ? 2 : 0;
+        s = new TextDecoder(le ? 'utf-16le' : 'utf-16be').decode(bytes.subarray(start));
+      } else if (enc === 2) s = new TextDecoder('utf-16be').decode(bytes);
+      else if (enc === 3) s = new TextDecoder('utf-8').decode(bytes);
+      else {
+        // 한국 mp3는 latin1 자리에 EUC-KR(CP949)로 적힌 경우가 많다
+        const ascii = bytes.every(c => c < 0x80);
+        try { s = new TextDecoder(ascii ? 'utf-8' : 'euc-kr', { fatal: true }).decode(bytes); }
+        catch { s = new TextDecoder('windows-1252').decode(bytes); }
+      }
+    } catch { return ''; }
+    return s.split('\0')[0].trim();
+  }
+  // 문자 인코딩에 맞는 0 종료 위치 (UTF-16은 0x00 0x00)
+  function findTerm(b, from, enc) {
+    if (enc === 1 || enc === 2) {
+      for (let i = from; i + 1 < b.length; i += 2) if (b[i] === 0 && b[i + 1] === 0) return i;
+      return b.length;
+    }
+    const i = b.indexOf(0, from);
+    return i < 0 ? b.length : i;
+  }
+  function sniffMime(img, given) {
+    if (img[0] === 0x89 && img[1] === 0x50) return 'image/png';
+    if (img[0] === 0xff && img[1] === 0xd8) return 'image/jpeg';
+    if (img[0] === 0x47 && img[1] === 0x49) return 'image/gif';
+    return /^image\//.test(given) ? given : 'image/jpeg';
+  }
+  async function readTags(blob) {
+    const out = {};
+    try {
+      const head = new Uint8Array(await blob.slice(0, 10).arrayBuffer());
+      if (head[0] !== 0x49 || head[1] !== 0x44 || head[2] !== 0x33) return out; // "ID3"
+      const ver = head[3], flags = head[5];
+      if (ver < 2 || ver > 4) return out;
+      let b = new Uint8Array(await blob.slice(10, 10 + synch(head, 6)).arrayBuffer());
+      if (flags & 0x80 && ver < 4) b = unsync(b);
+      let p = 0;
+      if (flags & 0x40 && ver >= 3) p = ver === 4 ? synch(b, 0) : be32(b, 0) + 4;
+      const idLen = ver === 2 ? 3 : 4, hLen = ver === 2 ? 6 : 10;
+      let pic = null;
+      while (p + hLen <= b.length) {
+        const id = String.fromCharCode(...b.subarray(p, p + idLen));
+        if (!/^[A-Z0-9]{3,4}$/.test(id)) break;
+        const size = ver === 2 ? (b[p + 3] << 16 | b[p + 4] << 8 | b[p + 5]) : ver === 4 ? synch(b, p + 4) : be32(b, p + 4);
+        const ff = ver === 2 ? 0 : b[p + 9];
+        let d = b.subarray(p + hLen, p + hLen + size);
+        p += hLen + size;
+        if (!size) continue;
+        const packed = ver === 3 ? ff & 0xc0 : ver === 4 ? ff & 0x0c : 0; // 압축/암호화된 프레임은 건너뜀
+        if (packed) continue;
+        if (ver === 4 && ff & 0x02) d = unsync(d);
+        if (ver === 4 && ff & 0x01) d = d.subarray(4);
+        if (id === 'TIT2' || id === 'TT2') out.title = decodeText(d[0], d.subarray(1));
+        else if (id === 'TPE1' || id === 'TP1') out.artist = decodeText(d[0], d.subarray(1));
+        else if (id === 'APIC' || id === 'PIC') {
+          const enc = d[0];
+          let i, mime;
+          if (id === 'PIC') { mime = 'image/' + String.fromCharCode(...d.subarray(1, 4)).toLowerCase(); i = 4; }
+          else { const e = d.indexOf(0, 1); mime = String.fromCharCode(...d.subarray(1, e)).toLowerCase(); i = e + 1; }
+          const type = d[i];
+          const end = findTerm(d, i + 1, enc);
+          const img = d.subarray(end + (enc === 1 || enc === 2 ? 2 : 1));
+          // 앞표지(type 3)를 우선, 없으면 첫 그림
+          if (img.length > 100 && (!pic || (type === 3 && pic.type !== 3))) pic = { type, img, mime };
+        }
+      }
+      if (pic) out.art = new Blob([pic.img.slice()], { type: sniffMime(pic.img, pic.mime) });
+    } catch (e) { /* 태그가 깨진 파일은 파일 이름만 사용 */ }
+    return out;
+  }
+
   // ---------- 상태 ----------
   const audio = new Audio();
   audio.preload = 'auto';
-  let tracks = [];          // [{id, name, blob}] 이름순
+  let tracks = [];          // 파일 이름순
   let order = [];           // 재생 순서 (tracks 인덱스)
   let pos = -1;             // order 내 현재 위치
   let currentUrl = null;
+  const artUrls = new Map();
   const settings = loadSettings();
 
   function loadSettings() {
@@ -171,14 +398,32 @@
   }
 
   const collator = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
-  const displayName = n => n.replace(/\.[^.]+$/, '');
+  const fileBase = n => n.replace(/\.[^.]+$/, '');
+  const titleOf = t => t.title || fileBase(t.name);
+  const artistOf = t => t.artist || '';
   const fmt = s => {
     if (!isFinite(s)) return '0:00';
     s = Math.floor(s);
     return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   };
+  const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const currentIdx = () => (pos >= 0 ? order[pos] : -1);
   const currentTrack = () => tracks[currentIdx()];
+
+  function artUrl(t) {
+    if (!t || !t.art) return null;
+    if (!artUrls.has(t.id)) artUrls.set(t.id, URL.createObjectURL(t.art));
+    return artUrls.get(t.id);
+  }
+  // 앨범 아트가 없으면 홀로그램 CD (곡 이름으로 무지개 각도를 바꿈)
+  function artHtml(t) {
+    const url = artUrl(t);
+    if (url) return `<img src="${url}" alt="" loading="lazy">`;
+    let h = 0;
+    for (const c of (t ? t.name : '')) h = Math.imul(h ^ c.charCodeAt(0), 2654435761) >>> 0;
+    h %= 360;
+    return `<div class="ph"><div class="cd" style="--r:${h}deg"></div></div>`;
+  }
 
   function shuffled(arr) {
     const a = arr.slice();
@@ -201,6 +446,13 @@
     }
   }
 
+  // ---------- 화면 전환 ----------
+  function showNow(on) {
+    document.body.classList.toggle('show-now', on);
+    $('nowView').setAttribute('aria-hidden', String(!on));
+    $('listView').setAttribute('aria-hidden', String(on));
+  }
+
   // ---------- 재생 ----------
   function playAt(newPos) {
     if (newPos < 0 || newPos >= order.length) return;
@@ -209,7 +461,7 @@
     if (currentUrl) URL.revokeObjectURL(currentUrl);
     currentUrl = URL.createObjectURL(t.blob);
     audio.src = currentUrl;
-    audio.play().catch(err => setStatus('재생 실패: ' + err.message));
+    audio.play().catch(err => toast('재생 실패: ' + err.message));
     updateMediaSession();
     render();
   }
@@ -222,7 +474,7 @@
     if (auto && settings.repeat === 'one') { audio.currentTime = 0; audio.play(); return; }
     if (pos + 1 < order.length) return playAt(pos + 1);
     if (settings.repeat === 'all' || !auto) {
-      if (settings.shuffle) { order = shuffled(order); }
+      if (settings.shuffle) order = shuffled(order);
       return playAt(0);
     }
     stop(); // 반복 꺼짐 + 마지막 곡 끝
@@ -234,11 +486,8 @@
   }
   function togglePlay() {
     if (!tracks.length) return;
-    if (pos < 0) {
-      rebuildOrder(-1);
-      return playAt(0);
-    }
-    if (audio.paused) audio.play().catch(err => setStatus('재생 실패: ' + err.message));
+    if (pos < 0) { rebuildOrder(-1); return playAt(0); }
+    if (audio.paused) audio.play().catch(err => toast('재생 실패: ' + err.message));
     else audio.pause();
   }
   function stop() {
@@ -251,6 +500,7 @@
       navigator.mediaSession.metadata = null;
       navigator.mediaSession.playbackState = 'none';
     }
+    showNow(false);
     render();
   }
 
@@ -260,22 +510,27 @@
   audio.addEventListener('loadedmetadata', renderTime);
   audio.addEventListener('timeupdate', renderTime);
   audio.addEventListener('error', () => {
-    if (audio.getAttribute('src')) setStatus('이 파일은 재생할 수 없습니다.');
+    if (audio.getAttribute('src')) toast('이 파일은 재생할 수 없습니다');
   });
 
-  // ---------- 잠금화면 / 제어센터 컨트롤 ----------
-  function updateMediaSession() {
+  // ---------- 잠금화면 / 제어센터 ----------
+  const blobToDataUrl = b => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.onerror = () => r(null); f.readAsDataURL(b); });
+  async function updateMediaSession() {
     if (!('mediaSession' in navigator)) return;
     const t = currentTrack();
     if (!t) return;
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: displayName(t.name), artist: '내 음악', album: '내 음악',
-      artwork: [{ src: 'icon-512.png', sizes: '512x512', type: 'image/png' }]
-    });
+    const meta = { title: titleOf(t), artist: artistOf(t) || '내 음악', album: '내 음악',
+      artwork: [{ src: 'icon-512.png', sizes: '512x512', type: 'image/png' }] };
+    navigator.mediaSession.metadata = new MediaMetadata(meta);
+    if (t.art) {
+      const data = await blobToDataUrl(t.art);
+      if (data && currentTrack() === t) {
+        navigator.mediaSession.metadata = new MediaMetadata({ ...meta, artwork: [{ src: data, sizes: '512x512', type: t.art.type }] });
+      }
+    }
   }
   if ('mediaSession' in navigator) {
-    const ms = navigator.mediaSession;
-    const set = (a, h) => { try { ms.setActionHandler(a, h); } catch {} };
+    const set = (a, h) => { try { navigator.mediaSession.setActionHandler(a, h); } catch {} };
     set('play', () => togglePlay());
     set('pause', () => audio.pause());
     set('previoustrack', prev);
@@ -284,7 +539,7 @@
     set('seekto', d => { audio.currentTime = d.seekTime; });
   }
 
-  // ---------- 파일 추가 ----------
+  // ---------- 파일 추가 / 삭제 ----------
   $('addBtn').onclick = () => $('fileInput').click();
   $('fileInput').onchange = async e => {
     const files = [...e.target.files].filter(f => /\.mp3$/i.test(f.name) || f.type.startsWith('audio/'));
@@ -293,15 +548,16 @@
     const existing = new Set(tracks.map(t => t.name + '|' + t.blob.size));
     let added = 0;
     for (const [i, f] of files.entries()) {
-      setStatus(`추가 중… ${i + 1}/${files.length}`);
+      toast(`추가 중… ${i + 1}/${files.length}`, true);
       if (existing.has(f.name + '|' + f.size)) continue;
       // File을 그대로 넣으면 원본 경로를 참조할 수 있어 Blob으로 복사해 저장
       const blob = new Blob([await f.arrayBuffer()], { type: f.type || 'audio/mpeg' });
-      await dbPut({ id: crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random(), name: f.name, blob });
+      const tags = await readTags(blob);
+      await dbPut({ id: crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random(), name: f.name, blob, ...tags, tagged: true });
       added++;
     }
     await reload();
-    setStatus(added ? `${added}곡 추가됨` : '이미 있는 곡입니다');
+    toast(added ? `${added}곡 추가됨` : '이미 있는 곡입니다');
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
   };
 
@@ -314,7 +570,7 @@
 
   async function deleteTrack(idx) {
     const t = tracks[idx];
-    if (!confirm(`"${displayName(t.name)}" 을(를) 삭제할까요?`)) return;
+    if (!confirm(`"${titleOf(t)}" 을(를) 삭제할까요?`)) return;
     if (idx === currentIdx()) stop();
     await dbDel(t.id);
     await reload();
@@ -323,82 +579,127 @@
   async function reload() {
     const keepId = currentTrack() && currentTrack().id;
     tracks = (await dbAll()).sort((a, b) => collator.compare(a.name, b.name));
-    const keepIdx = tracks.findIndex(t => t.id === keepId);
-    rebuildOrder(keepIdx);
+    const ids = new Set(tracks.map(t => t.id));
+    for (const [id, url] of artUrls) if (!ids.has(id)) { URL.revokeObjectURL(url); artUrls.delete(id); }
+    rebuildOrder(tracks.findIndex(t => t.id === keepId));
     render();
   }
 
-  // ---------- 화면 ----------
-  let statusTimer;
-  function setStatus(msg) {
-    $('status').textContent = msg;
-    clearTimeout(statusTimer);
-    statusTimer = setTimeout(() => { $('status').textContent = ''; }, 3000);
+  // 이전 버전에서 추가한 곡은 태그를 한 번 읽어 저장해 둔다
+  async function backfillTags() {
+    const todo = tracks.filter(t => !t.tagged);
+    for (const t of todo) {
+      Object.assign(t, await readTags(t.blob), { tagged: true });
+      await dbPut(t);
+    }
+    if (todo.length) { render(); updateMediaSession(); }
+  }
+
+  // ---------- 화면 그리기 ----------
+  let toastTimer;
+  function toast(msg, sticky) {
+    $('toast').textContent = msg;
+    $('toast').classList.add('show');
+    clearTimeout(toastTimer);
+    if (!sticky) toastTimer = setTimeout(() => $('toast').classList.remove('show'), 1800);
   }
 
   function renderList() {
     const list = $('list');
     const q = $('q').value.trim().toLowerCase();
-    list.innerHTML = '';
     if (!tracks.length) {
-      list.innerHTML = '<li class="empty" style="display:block;border:0"><b>곡이 없습니다</b><br><br>' +
-        '<b>+ 추가</b>를 눌러 파일 앱에서 mp3 폴더를 열고<br>오른쪽 위 <b>선택</b> → <b>모두 선택</b> → <b>열기</b>를 누르세요.<br><br>' +
-        '파일은 인터넷에 올라가지 않고 이 기기 안에만 저장됩니다.</li>';
-      $('meta').textContent = '';
+      list.innerHTML = '<li class="empty" style="display:block"><b>곡이 없습니다</b><br>' +
+        '오른쪽 위 <b>＋</b>를 눌러 파일 앱에서 mp3 폴더를 열고<br><b>선택 → 모두 선택 → 열기</b>를 누르세요.<br><br>' +
+        '파일은 인터넷에 올라가지 않고<br>이 기기 안에만 저장됩니다.</li>';
+      $('count').textContent = '';
       return;
     }
     const cur = currentIdx();
-    let shown = 0;
-    const frag = document.createDocumentFragment();
+    const playing = !audio.paused;
+    let shown = 0, html = '';
     tracks.forEach((t, i) => {
-      const name = displayName(t.name);
-      if (q && !name.toLowerCase().includes(q)) return;
+      const title = titleOf(t), artist = artistOf(t);
+      if (q && !(title + ' ' + artist + ' ' + t.name).toLowerCase().includes(q)) return;
       shown++;
-      const li = document.createElement('li');
-      if (i === cur) li.className = 'current';
-      li.innerHTML = `<span class="num">${i === cur ? '♪' : i + 1}</span><span class="name"></span><button class="del" aria-label="삭제">×</button>`;
-      li.querySelector('.name').textContent = name;
-      li.onclick = ev => {
-        if (ev.target.classList.contains('del')) return deleteTrack(i);
-        if (i === cur) togglePlay(); else playTrackIndex(i);
-      };
-      frag.appendChild(li);
+      const isCur = i === cur;
+      html += `<li data-i="${i}" class="${isCur ? 'current' + (playing ? ' playing' : '') : ''}">
+        <div class="art">${artHtml(t)}</div>
+        <div class="txt"><div class="ti">${esc(title)}</div><div class="ar">${esc(artist || fileBase(t.name))}</div></div>
+        ${isCur ? '<div class="eq"><i></i><i></i><i></i></div>' : ''}
+        <button class="del round" data-del="${i}" aria-label="삭제">${icon('x')}</button>
+      </li>`;
     });
-    list.appendChild(frag);
-    $('meta').textContent = q ? `${shown} / ${tracks.length}곡` : `${tracks.length}곡`;
+    list.innerHTML = html;
+    $('count').textContent = q ? `${shown} / ${tracks.length}곡` : `${tracks.length}곡`;
+  }
+  $('list').addEventListener('click', ev => {
+    const del = ev.target.closest('[data-del]');
+    if (del) return deleteTrack(+del.dataset.del);
+    const li = ev.target.closest('li[data-i]');
+    if (!li) return;
+    const i = +li.dataset.i;
+    if (i !== currentIdx()) playTrackIndex(i);
+    else if (audio.paused) togglePlay();
+    showNow(true);
+  });
+
+  let shownArtId;
+  function renderNow() {
+    const t = currentTrack();
+    const artKey = t ? t.id + (t.art ? '+' : '') : '';
+    if (artKey !== shownArtId) {
+      shownArtId = artKey;
+      $('nowArt').innerHTML = artHtml(t);
+      $('miniArt').innerHTML = artHtml(t);
+    }
+    $('nowTitle').textContent = t ? titleOf(t) : '재생 중인 곡 없음';
+    $('nowArtist').textContent = t ? artistOf(t) : '';
+    $('mini').hidden = !t;
+    if (t) {
+      $('miniTitle').textContent = titleOf(t);
+      $('miniArtist').textContent = artistOf(t) || fileBase(t.name);
+    }
   }
 
   function renderControls() {
     const t = currentTrack();
-    $('np').textContent = t ? displayName(t.name) : '재생 중인 곡 없음';
     const playing = t && !audio.paused;
-    $('playIcon').firstElementChild.setAttribute('d', playing ? PAUSE_PATH : PLAY_PATH);
+    $('playBtn').innerHTML = icon(playing ? 'pause' : 'play');
+    $('miniPlay').innerHTML = icon(playing ? 'pause' : 'play');
     $('playBtn').setAttribute('aria-label', playing ? '일시정지' : '재생');
+    $('miniPlay').setAttribute('aria-label', playing ? '일시정지' : '재생');
     ['playBtn', 'prevBtn', 'nextBtn'].forEach(id => { $(id).disabled = !tracks.length; });
-    $('stopBtn').disabled = !t;
     $('shuffleBtn').classList.toggle('on', settings.shuffle);
     $('repeatBtn').classList.toggle('on', settings.repeat !== 'off');
     $('repeatBadge').textContent = settings.repeat === 'one' ? '1' : '';
+    const li = document.querySelector('#list li.current');
+    if (li) li.classList.toggle('playing', !!playing);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = t ? (playing ? 'playing' : 'paused') : 'none';
   }
 
   let seeking = false;
   function renderTime() {
-    const d = audio.duration;
+    const d = audio.duration, c = audio.currentTime || 0;
+    const seek = $('seek');
     $('dur').textContent = fmt(d);
-    $('seek').max = isFinite(d) ? d : 0;
+    seek.max = isFinite(d) ? d : 0;
     if (!seeking) {
-      $('seek').value = audio.currentTime || 0;
-      $('cur').textContent = fmt(audio.currentTime);
+      seek.value = c;
+      $('cur').textContent = fmt(c);
     }
+    seek.style.setProperty('--p', (isFinite(d) && d ? (+seek.value / d) * 100 : 0) + '%');
   }
-  function render() { renderList(); renderControls(); renderTime(); }
+  function render() { renderList(); renderNow(); renderControls(); renderTime(); }
 
-  $('seek').addEventListener('input', () => { seeking = true; $('cur').textContent = fmt(+$('seek').value); });
+  $('seek').addEventListener('input', () => { seeking = true; $('cur').textContent = fmt(+$('seek').value); renderTime(); });
   $('seek').addEventListener('change', () => { audio.currentTime = +$('seek').value; seeking = false; });
   $('q').addEventListener('input', renderList);
 
   $('playBtn').onclick = togglePlay;
+  $('miniPlay').onclick = e => { e.stopPropagation(); togglePlay(); };
+  $('miniStop').onclick = e => { e.stopPropagation(); stop(); };
+  $('mini').onclick = () => showNow(true);
+  $('backBtn').onclick = () => showNow(false);
   $('nextBtn').onclick = () => next();
   $('prevBtn').onclick = prev;
   $('stopBtn').onclick = stop;
@@ -406,13 +707,13 @@
     settings.shuffle = !settings.shuffle;
     saveSettings();
     rebuildOrder();
-    setStatus(settings.shuffle ? '무작위 재생' : '순차 재생');
+    toast(settings.shuffle ? '무작위 재생' : '순차 재생');
     renderControls();
   };
   $('repeatBtn').onclick = () => {
     settings.repeat = { off: 'all', all: 'one', one: 'off' }[settings.repeat];
     saveSettings();
-    setStatus({ off: '반복 안 함', all: '전체 반복', one: '한 곡 반복' }[settings.repeat]);
+    toast({ off: '반복 안 함', all: '전체 반복', one: '한 곡 반복' }[settings.repeat]);
     renderControls();
   };
 
@@ -420,7 +721,7 @@
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 
-  reload().catch(err => setStatus('저장소를 열 수 없습니다: ' + err.message));
+  reload().then(backfillTags).catch(err => toast('저장소를 열 수 없습니다: ' + err.message));
 })();
 </script>
 </body>
