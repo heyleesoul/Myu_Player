@@ -183,6 +183,29 @@
     opacity: 0; transition: opacity .2s; pointer-events: none; white-space: nowrap; z-index: 10;
   }
   #toast.show { opacity: 1; }
+  /* 폴더(재생 목록) */
+  .list-head h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .folders { display: flex; gap: 8px; overflow-x: auto; padding: 4px 20px 12px; scrollbar-width: none; flex: none; }
+  .folders::-webkit-scrollbar { display: none; }
+  .chip { flex: none; height: 38px; padding: 0 14px; border-radius: 999px; font-size: 14px; font-weight: 650; color: var(--text);
+    display: flex; align-items: center; gap: 6px; white-space: nowrap; max-width: 180px; }
+  .chip .nm { overflow: hidden; text-overflow: ellipsis; }
+  .chip .n { font-size: 12px; color: var(--sub); font-weight: 600; }
+  .chip.active { color: #fff; background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.45), transparent 55%), linear-gradient(145deg, var(--accent-2), var(--accent)); border-color: rgba(255,255,255,.65); }
+  .chip.active .n { color: rgba(255,255,255,.85); }
+  .chip .more { width: 16px; height: 16px; }
+  .chip.new { color: var(--accent); }
+  .chip .ic { width: 16px; height: 16px; }
+  .chip .ic.more { width: 16px; height: 16px; }
+  #sheet { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; background: rgba(30,34,80,.28); }
+  #sheet[hidden] { display: none; }
+  .sheet-card { width: 100%; margin: 0 12px calc(12px + env(safe-area-inset-bottom)); border-radius: 26px; padding: 8px; }
+  .sheet-card .st-title { text-align: center; font-size: 13px; color: var(--sub); padding: 10px 12px 6px; font-weight: 650; }
+  .sheet-card button { width: 100%; padding: 15px; font-size: 17px; font-weight: 600; border-radius: 18px; color: var(--accent); }
+  .sheet-card button + button { margin-top: 2px; }
+  .sheet-card button.danger { color: #e0457b; }
+  .sheet-card button.cancel { color: var(--sub); }
+  .sheet-card button:active { background: var(--glass-strong); }
 </style>
 </head>
 <body>
@@ -190,12 +213,13 @@
   <section class="view" id="listView">
     <div class="list-head">
       <div class="t">
-        <h1>내 음악</h1>
+        <h1 id="folderTitle">내 음악</h1>
         <div class="count" id="count"></div>
       </div>
-      <button class="head-btn glass round wico" id="clearBtn" aria-label="전체 삭제"></button>
+      <button class="head-btn glass round wico" id="clearBtn" aria-label="이 폴더의 곡 모두 삭제"></button>
       <button class="head-btn add glass round wico" id="addBtn" aria-label="곡 추가"></button>
     </div>
+    <div class="folders" id="folders"></div>
     <label class="search glass"><span id="searchIcon"></span><input id="q" type="search" placeholder="곡, 가수 검색" autocomplete="off"></label>
     <ul id="list"></ul>
     <div id="mini" class="glass" hidden>
@@ -210,7 +234,7 @@
   <section class="view" id="nowView" aria-hidden="true">
     <div class="top">
       <button class="glass round wico" id="backBtn" aria-label="재생 목록"></button>
-      <span class="label">재생 중</span>
+      <span class="label" id="nowLabel">재생 중</span>
       <button class="glass round wico" id="stopBtn" aria-label="종료"></button>
     </div>
     <div class="now-body">
@@ -233,6 +257,16 @@
     </div>
   </section>
 
+  <!-- 폴더 메뉴 -->
+  <div id="sheet" hidden>
+    <div class="sheet-card glass">
+      <div class="st-title" id="sheetTitle"></div>
+      <button id="renameBtn">폴더 이름 바꾸기</button>
+      <button id="delFolderBtn" class="danger">폴더 삭제</button>
+      <button id="cancelBtn" class="cancel">취소</button>
+    </div>
+  </div>
+
   <input type="file" id="fileInput" accept="audio/mpeg,audio/mp3,.mp3,audio/*" multiple hidden>
   <div id="toast"></div>
 
@@ -254,7 +288,9 @@
     trash: { st: 1, d: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>' },
     x: { st: 1, d: '<path d="M6 6l12 12M18 6L6 18"/>' },
     search: { st: 1, d: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>' },
-    note: { st: 1, d: '<path d="M9 18V5.5l11-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>' }
+    note: { st: 1, d: '<path d="M9 18V5.5l11-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>' },
+    folder: { st: 1, d: '<path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2.5h8.5A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z"/>' },
+    more: '<circle cx="5.5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18.5" cy="12" r="2"/>'
   };
   const icon = name => {
     const v = ICONS[name];
@@ -269,27 +305,32 @@
   $('repeatBtn').innerHTML = icon('repeat') + '<span class="badge" id="repeatBadge"></span>';
 
   // ---------- IndexedDB (mp3는 기기 안에만 저장) ----------
-  const DB_NAME = 'local-music', STORE = 'tracks';
+  // v2: folders 스토어 추가. 곡마다 folder 필드로 어느 폴더에 속하는지 기록한다.
+  const DB_NAME = 'local-music', STORE = 'tracks', FOLDERS = 'folders';
+  const MAX_FOLDERS = 5, DEFAULT_FOLDER = 'default';
   const dbReady = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: 'id' });
+    const req = indexedDB.open(DB_NAME, 2);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(FOLDERS)) db.createObjectStore(FOLDERS, { keyPath: 'id' });
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
-  async function tx(mode, fn) {
+  async function tx(store, mode, fn) {
     const db = await dbReady;
     return new Promise((resolve, reject) => {
-      const t = db.transaction(STORE, mode);
-      const out = fn(t.objectStore(STORE));
+      const t = db.transaction(store, mode);
+      const out = fn(t.objectStore(store));
       t.oncomplete = () => resolve(out && out.result);
       t.onerror = () => reject(t.error);
       t.onabort = () => reject(t.error);
     });
   }
-  const dbAll = () => tx('readonly', s => s.getAll());
-  const dbPut = rec => tx('readwrite', s => s.put(rec));
-  const dbDel = id => tx('readwrite', s => s.delete(id));
-  const dbClear = () => tx('readwrite', s => s.clear());
+  const dbAll = (store = STORE) => tx(store, 'readonly', s => s.getAll());
+  const dbPut = (rec, store = STORE) => tx(store, 'readwrite', s => s.put(rec));
+  const dbDel = (id, store = STORE) => tx(store, 'readwrite', s => s.delete(id));
 
   // ---------- ID3 태그 읽기 (앨범 아트, 제목, 가수) ----------
   const synch = (b, i) => (b[i] & 0x7f) << 21 | (b[i + 1] & 0x7f) << 14 | (b[i + 2] & 0x7f) << 7 | (b[i + 3] & 0x7f);
@@ -382,19 +423,33 @@
   // ---------- 상태 ----------
   const audio = new Audio();
   audio.preload = 'auto';
-  let tracks = [];          // 파일 이름순
-  let order = [];           // 재생 순서 (tracks 인덱스)
+  let folders = [];         // [{id, name, created}]
+  let tracks = [];          // 모든 폴더의 곡, 파일 이름순
+  let viewFolder = DEFAULT_FOLDER;   // 목록 화면에 보이는 폴더
+  let playFolder = null;    // 지금 재생 중인 폴더
+  let queue = [];           // 재생 중인 폴더의 곡들
+  let order = [];           // 재생 순서 (queue 인덱스)
   let pos = -1;             // order 내 현재 위치
   let currentUrl = null;
+  let pendingSeek = 0;      // 앱을 다시 열었을 때 이어서 들을 위치
   const artUrls = new Map();
-  const settings = loadSettings();
+  const settings = loadJson('player-settings', { shuffle: false, repeat: 'all' });
+  const saved = loadJson('player-state', {});   // { view, folder, trackId, time }
 
-  function loadSettings() {
-    try { return Object.assign({ shuffle: false, repeat: 'all' }, JSON.parse(localStorage.getItem('player-settings') || '{}')); }
-    catch { return { shuffle: false, repeat: 'all' }; }
+  function loadJson(key, def) {
+    try { return Object.assign(def, JSON.parse(localStorage.getItem(key) || '{}')); }
+    catch { return def; }
   }
-  function saveSettings() {
-    try { localStorage.setItem('player-settings', JSON.stringify(settings)); } catch {}
+  function saveJson(key, val) {
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+  }
+  const saveSettings = () => saveJson('player-settings', settings);
+  // 폴더별 재생 목록과 마지막으로 듣던 곡·위치를 기억한다
+  function saveState() {
+    const t = currentTrack();
+    saveJson('player-state', t
+      ? { view: viewFolder, folder: playFolder, trackId: t.id, time: Math.floor(audio.currentTime || pendingSeek || 0) }
+      : { view: viewFolder });
   }
 
   const collator = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
@@ -407,8 +462,10 @@
     return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   };
   const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const folderTracks = fid => tracks.filter(t => t.folder === fid);
+  const folderById = fid => folders.find(f => f.id === fid);
   const currentIdx = () => (pos >= 0 ? order[pos] : -1);
-  const currentTrack = () => tracks[currentIdx()];
+  const currentTrack = () => queue[currentIdx()];
 
   function artUrl(t) {
     if (!t || !t.art) return null;
@@ -435,7 +492,7 @@
   }
   // 현재 곡을 맨 앞에 둔 채로 순서를 다시 만든다
   function rebuildOrder(keepIdx = currentIdx()) {
-    const all = tracks.map((_, i) => i);
+    const all = queue.map((_, i) => i);
     if (settings.shuffle) {
       order = shuffled(all.filter(i => i !== keepIdx));
       if (keepIdx >= 0) order.unshift(keepIdx);
@@ -444,6 +501,11 @@
       order = all;
       pos = keepIdx;
     }
+  }
+  function setQueue(fid, keepId) {
+    playFolder = fid;
+    queue = folderTracks(fid);
+    rebuildOrder(queue.findIndex(t => t.id === keepId));
   }
 
   // ---------- 화면 전환 ----------
@@ -454,20 +516,29 @@
   }
 
   // ---------- 재생 ----------
-  function playAt(newPos) {
-    if (newPos < 0 || newPos >= order.length) return;
+  function loadAt(newPos) {
+    if (newPos < 0 || newPos >= order.length) return false;
     pos = newPos;
     const t = currentTrack();
     if (currentUrl) URL.revokeObjectURL(currentUrl);
     currentUrl = URL.createObjectURL(t.blob);
     audio.src = currentUrl;
-    audio.play().catch(err => toast('재생 실패: ' + err.message));
     updateMediaSession();
     render();
+    return true;
   }
-  function playTrackIndex(idx) {
-    if (settings.shuffle) rebuildOrder(idx);
-    playAt(order.indexOf(idx));
+  function playAt(newPos) {
+    pendingSeek = 0;
+    if (!loadAt(newPos)) return;
+    audio.play().catch(err => toast('재생 실패: ' + err.message));
+    saveState();
+  }
+  function playTrack(id) {
+    const t = tracks.find(x => x.id === id);
+    if (!t) return;
+    if (playFolder !== t.folder || !queue.some(x => x.id === id)) setQueue(t.folder, id);
+    else if (settings.shuffle) rebuildOrder(queue.findIndex(x => x.id === id));
+    playAt(order.indexOf(queue.findIndex(x => x.id === id)));
   }
   function next(auto = false) {
     if (!order.length) return;
@@ -485,8 +556,11 @@
     playAt(pos > 0 ? pos - 1 : order.length - 1);
   }
   function togglePlay() {
-    if (!tracks.length) return;
-    if (pos < 0) { rebuildOrder(-1); return playAt(0); }
+    if (pos < 0) {
+      if (!folderTracks(viewFolder).length) return;
+      setQueue(viewFolder, null);
+      return playAt(0);
+    }
     if (audio.paused) audio.play().catch(err => toast('재생 실패: ' + err.message));
     else audio.pause();
   }
@@ -496,22 +570,33 @@
     audio.load();
     if (currentUrl) { URL.revokeObjectURL(currentUrl); currentUrl = null; }
     pos = -1;
+    pendingSeek = 0;
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = null;
       navigator.mediaSession.playbackState = 'none';
     }
     showNow(false);
+    saveState();
     render();
   }
 
   audio.addEventListener('ended', () => next(true));
   audio.addEventListener('play', renderControls);
-  audio.addEventListener('pause', renderControls);
-  audio.addEventListener('loadedmetadata', renderTime);
-  audio.addEventListener('timeupdate', renderTime);
+  audio.addEventListener('pause', () => { renderControls(); saveState(); });
+  audio.addEventListener('loadedmetadata', () => {
+    if (pendingSeek && pendingSeek < audio.duration) audio.currentTime = pendingSeek;
+    renderTime();
+  });
+  let lastSave = 0;
+  audio.addEventListener('timeupdate', () => {
+    renderTime();
+    if (Date.now() - lastSave > 5000) { lastSave = Date.now(); saveState(); }
+  });
   audio.addEventListener('error', () => {
     if (audio.getAttribute('src')) toast('이 파일은 재생할 수 없습니다');
   });
+  window.addEventListener('pagehide', saveState);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveState(); });
 
   // ---------- 잠금화면 / 제어센터 ----------
   const blobToDataUrl = b => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.onerror = () => r(null); f.readAsDataURL(b); });
@@ -519,7 +604,8 @@
     if (!('mediaSession' in navigator)) return;
     const t = currentTrack();
     if (!t) return;
-    const meta = { title: titleOf(t), artist: artistOf(t) || '내 음악', album: '내 음악',
+    const album = (folderById(playFolder) || {}).name || '내 음악';
+    const meta = { title: titleOf(t), artist: artistOf(t) || album, album,
       artwork: [{ src: 'icon-512.png', sizes: '512x512', type: 'image/png' }] };
     navigator.mediaSession.metadata = new MediaMetadata(meta);
     if (t.art) {
@@ -539,13 +625,72 @@
     set('seekto', d => { audio.currentTime = d.seekTime; });
   }
 
+  // ---------- 폴더 ----------
+  async function addFolder() {
+    if (folders.length >= MAX_FOLDERS) return toast(`폴더는 ${MAX_FOLDERS}개까지 만들 수 있어요`);
+    const name = (prompt('새 폴더 이름', `재생 목록 ${folders.length + 1}`) || '').trim();
+    if (!name) return;
+    const f = { id: 'f' + Date.now(), name: name.slice(0, 30), created: Date.now() };
+    await dbPut(f, FOLDERS);
+    viewFolder = f.id;
+    $('q').value = '';
+    await reload();
+    saveState();
+    toast(`"${f.name}" 폴더를 만들었어요`);
+  }
+  async function renameFolder(fid) {
+    const f = folderById(fid);
+    const name = (prompt('폴더 이름', f.name) || '').trim();
+    if (!name || name === f.name) return;
+    f.name = name.slice(0, 30);
+    await dbPut(f, FOLDERS);
+    render();
+    if (playFolder === fid) updateMediaSession();
+  }
+  async function deleteFolder(fid) {
+    const f = folderById(fid);
+    if (folders.length <= 1) return toast('폴더가 하나뿐이라 지울 수 없어요');
+    const n = folderTracks(fid).length;
+    if (!confirm(`"${f.name}" 폴더와 안의 ${n}곡을 이 기기에서 삭제할까요?`)) return;
+    if (playFolder === fid) stop();
+    for (const t of folderTracks(fid)) await dbDel(t.id);
+    await dbDel(fid, FOLDERS);
+    viewFolder = folders.find(x => x.id !== fid).id;
+    await reload();
+    saveState();
+  }
+  function openSheet(fid) {
+    $('sheetTitle').textContent = folderById(fid).name;
+    $('sheet').dataset.fid = fid;
+    $('sheet').hidden = false;
+  }
+  const closeSheet = () => { $('sheet').hidden = true; };
+  $('sheet').onclick = e => { if (e.target === $('sheet')) closeSheet(); };
+  $('cancelBtn').onclick = closeSheet;
+  $('renameBtn').onclick = () => { const fid = $('sheet').dataset.fid; closeSheet(); renameFolder(fid); };
+  $('delFolderBtn').onclick = () => { const fid = $('sheet').dataset.fid; closeSheet(); deleteFolder(fid); };
+
+  $('folders').addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    if (chip.dataset.new) return addFolder();
+    const fid = chip.dataset.fid;
+    if (fid === viewFolder) return openSheet(fid);   // 선택된 폴더를 한 번 더 누르면 메뉴
+    viewFolder = fid;
+    $('q').value = '';
+    saveState();
+    render();
+    $('list').scrollTop = 0;
+  });
+
   // ---------- 파일 추가 / 삭제 ----------
   $('addBtn').onclick = () => $('fileInput').click();
   $('fileInput').onchange = async e => {
     const files = [...e.target.files].filter(f => /\.mp3$/i.test(f.name) || f.type.startsWith('audio/'));
     e.target.value = '';
     if (!files.length) return;
-    const existing = new Set(tracks.map(t => t.name + '|' + t.blob.size));
+    const fid = viewFolder;
+    const existing = new Set(folderTracks(fid).map(t => t.name + '|' + t.blob.size));
     let added = 0;
     for (const [i, f] of files.entries()) {
       toast(`추가 중… ${i + 1}/${files.length}`, true);
@@ -553,7 +698,7 @@
       // File을 그대로 넣으면 원본 경로를 참조할 수 있어 Blob으로 복사해 저장
       const blob = new Blob([await f.arrayBuffer()], { type: f.type || 'audio/mpeg' });
       const tags = await readTags(blob);
-      await dbPut({ id: crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random(), name: f.name, blob, ...tags, tagged: true });
+      await dbPut({ id: crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random(), name: f.name, blob, ...tags, tagged: true, folder: fid });
       added++;
     }
     await reload();
@@ -562,26 +707,41 @@
   };
 
   $('clearBtn').onclick = async () => {
-    if (!tracks.length || !confirm('저장된 모든 곡을 이 기기에서 삭제할까요?')) return;
-    stop();
-    await dbClear();
+    const list = folderTracks(viewFolder);
+    const f = folderById(viewFolder);
+    if (!list.length || !confirm(`"${f.name}" 폴더의 ${list.length}곡을 모두 이 기기에서 삭제할까요?`)) return;
+    if (playFolder === viewFolder) stop();
+    for (const t of list) await dbDel(t.id);
     await reload();
   };
 
-  async function deleteTrack(idx) {
-    const t = tracks[idx];
+  async function deleteTrack(id) {
+    const t = tracks.find(x => x.id === id);
     if (!confirm(`"${titleOf(t)}" 을(를) 삭제할까요?`)) return;
-    if (idx === currentIdx()) stop();
-    await dbDel(t.id);
+    if (currentTrack() && currentTrack().id === id) stop();
+    await dbDel(id);
     await reload();
   }
 
   async function reload() {
-    const keepId = currentTrack() && currentTrack().id;
+    folders = (await dbAll(FOLDERS)).sort((a, b) => a.created - b.created);
+    if (!folders.length) {
+      // 처음 실행 또는 폴더 기능 이전 버전: 기본 폴더를 만든다
+      const f = { id: DEFAULT_FOLDER, name: '내 음악', created: 0 };
+      await dbPut(f, FOLDERS);
+      folders = [f];
+    }
+    if (!folderById(viewFolder)) viewFolder = folders[0].id;
     tracks = (await dbAll()).sort((a, b) => collator.compare(a.name, b.name));
+    for (const t of tracks) {
+      if (!folderById(t.folder)) { t.folder = folders[0].id; t.tagged = false; } // 폴더 없는 곡은 첫 폴더로 (backfillTags에서 저장)
+    }
     const ids = new Set(tracks.map(t => t.id));
     for (const [id, url] of artUrls) if (!ids.has(id)) { URL.revokeObjectURL(url); artUrls.delete(id); }
-    rebuildOrder(tracks.findIndex(t => t.id === keepId));
+    if (playFolder) {
+      const keepId = currentTrack() && currentTrack().id;
+      setQueue(playFolder, keepId);
+    }
     render();
   }
 
@@ -589,10 +749,22 @@
   async function backfillTags() {
     const todo = tracks.filter(t => !t.tagged);
     for (const t of todo) {
-      Object.assign(t, await readTags(t.blob), { tagged: true });
+      if (!t.title && !t.artist && !t.art) Object.assign(t, await readTags(t.blob));
+      t.tagged = true;
       await dbPut(t);
     }
     if (todo.length) { render(); updateMediaSession(); }
+  }
+
+  // 앱을 다시 열면 마지막으로 듣던 폴더·곡·위치를 재생 화면에 띄운다 (자동 재생은 iOS가 막으므로 일시정지 상태)
+  function restore() {
+    if (saved.view && folderById(saved.view)) viewFolder = saved.view;
+    const t = saved.trackId && tracks.find(x => x.id === saved.trackId);
+    if (!t) return render();
+    setQueue(t.folder, t.id);
+    pendingSeek = saved.time || 0;
+    loadAt(pos);
+    showNow(true);
   }
 
   // ---------- 화면 그리기 ----------
@@ -604,41 +776,53 @@
     if (!sticky) toastTimer = setTimeout(() => $('toast').classList.remove('show'), 1800);
   }
 
+  function renderFolders() {
+    let html = folders.map(f => {
+      const active = f.id === viewFolder;
+      return `<button class="chip glass${active ? ' active' : ''}" data-fid="${f.id}">
+        <span class="nm">${esc(f.name)}</span><span class="n">${folderTracks(f.id).length}</span>${active ? icon('more') : ''}</button>`;
+    }).join('');
+    if (folders.length < MAX_FOLDERS) html += `<button class="chip glass new" data-new="1">${icon('plus')}새 폴더</button>`;
+    $('folders').innerHTML = html;
+    $('folderTitle').textContent = (folderById(viewFolder) || {}).name || '내 음악';
+  }
+
   function renderList() {
     const list = $('list');
     const q = $('q').value.trim().toLowerCase();
-    if (!tracks.length) {
-      list.innerHTML = '<li class="empty" style="display:block"><b>곡이 없습니다</b><br>' +
+    const items = folderTracks(viewFolder);
+    if (!items.length) {
+      list.innerHTML = '<li class="empty" style="display:block"><b>이 폴더에 곡이 없습니다</b><br>' +
         '오른쪽 위 <b>＋</b>를 눌러 파일 앱에서 mp3 폴더를 열고<br><b>선택 → 모두 선택 → 열기</b>를 누르세요.<br><br>' +
         '파일은 인터넷에 올라가지 않고<br>이 기기 안에만 저장됩니다.</li>';
-      $('count').textContent = '';
+      $('count').textContent = '0곡';
       return;
     }
-    const cur = currentIdx();
+    const cur = currentTrack();
     const playing = !audio.paused;
     let shown = 0, html = '';
-    tracks.forEach((t, i) => {
+    items.forEach(t => {
       const title = titleOf(t), artist = artistOf(t);
       if (q && !(title + ' ' + artist + ' ' + t.name).toLowerCase().includes(q)) return;
       shown++;
-      const isCur = i === cur;
-      html += `<li data-i="${i}" class="${isCur ? 'current' + (playing ? ' playing' : '') : ''}">
+      const isCur = cur && cur.id === t.id;
+      html += `<li data-id="${t.id}" class="${isCur ? 'current' + (playing ? ' playing' : '') : ''}">
         <div class="art">${artHtml(t)}</div>
         <div class="txt"><div class="ti">${esc(title)}</div><div class="ar">${esc(artist || fileBase(t.name))}</div></div>
         ${isCur ? '<div class="eq"><i></i><i></i><i></i></div>' : ''}
-        <button class="del round" data-del="${i}" aria-label="삭제">${icon('x')}</button>
+        <button class="del round" data-del="${t.id}" aria-label="삭제">${icon('x')}</button>
       </li>`;
     });
     list.innerHTML = html;
-    $('count').textContent = q ? `${shown} / ${tracks.length}곡` : `${tracks.length}곡`;
+    $('count').textContent = q ? `${shown} / ${items.length}곡` : `${items.length}곡`;
   }
   $('list').addEventListener('click', ev => {
     const del = ev.target.closest('[data-del]');
-    if (del) return deleteTrack(+del.dataset.del);
-    const li = ev.target.closest('li[data-i]');
+    if (del) return deleteTrack(del.dataset.del);
+    const li = ev.target.closest('li[data-id]');
     if (!li) return;
-    const i = +li.dataset.i;
-    if (i !== currentIdx()) playTrackIndex(i);
+    const cur = currentTrack();
+    if (!cur || cur.id !== li.dataset.id) playTrack(li.dataset.id);
     else if (audio.paused) togglePlay();
     showNow(true);
   });
@@ -654,6 +838,7 @@
     }
     $('nowTitle').textContent = t ? titleOf(t) : '재생 중인 곡 없음';
     $('nowArtist').textContent = t ? artistOf(t) : '';
+    $('nowLabel').textContent = t ? (folderById(playFolder) || {}).name || '재생 중' : '재생 중';
     $('mini').hidden = !t;
     if (t) {
       $('miniTitle').textContent = titleOf(t);
@@ -668,7 +853,8 @@
     $('miniPlay').innerHTML = icon(playing ? 'pause' : 'play');
     $('playBtn').setAttribute('aria-label', playing ? '일시정지' : '재생');
     $('miniPlay').setAttribute('aria-label', playing ? '일시정지' : '재생');
-    ['playBtn', 'prevBtn', 'nextBtn'].forEach(id => { $(id).disabled = !tracks.length; });
+    const hasSongs = queue.length || folderTracks(viewFolder).length;
+    ['playBtn', 'prevBtn', 'nextBtn'].forEach(id => { $(id).disabled = !hasSongs; });
     $('shuffleBtn').classList.toggle('on', settings.shuffle);
     $('repeatBtn').classList.toggle('on', settings.repeat !== 'off');
     $('repeatBadge').textContent = settings.repeat === 'one' ? '1' : '';
@@ -679,7 +865,7 @@
 
   let seeking = false;
   function renderTime() {
-    const d = audio.duration, c = audio.currentTime || 0;
+    const d = audio.duration, c = audio.currentTime || pendingSeek || 0;
     const seek = $('seek');
     $('dur').textContent = fmt(d);
     seek.max = isFinite(d) ? d : 0;
@@ -689,17 +875,21 @@
     }
     seek.style.setProperty('--p', (isFinite(d) && d ? (+seek.value / d) * 100 : 0) + '%');
   }
-  function render() { renderList(); renderNow(); renderControls(); renderTime(); }
+  function render() { renderFolders(); renderList(); renderNow(); renderControls(); renderTime(); }
 
   $('seek').addEventListener('input', () => { seeking = true; $('cur').textContent = fmt(+$('seek').value); renderTime(); });
-  $('seek').addEventListener('change', () => { audio.currentTime = +$('seek').value; seeking = false; });
+  $('seek').addEventListener('change', () => { audio.currentTime = +$('seek').value; seeking = false; saveState(); });
   $('q').addEventListener('input', renderList);
 
   $('playBtn').onclick = togglePlay;
   $('miniPlay').onclick = e => { e.stopPropagation(); togglePlay(); };
   $('miniStop').onclick = e => { e.stopPropagation(); stop(); };
   $('mini').onclick = () => showNow(true);
-  $('backBtn').onclick = () => showNow(false);
+  $('backBtn').onclick = () => {
+    // 재생 중인 폴더의 목록으로 돌아간다
+    if (playFolder && playFolder !== viewFolder) { viewFolder = playFolder; $('q').value = ''; render(); saveState(); }
+    showNow(false);
+  };
   $('nextBtn').onclick = () => next();
   $('prevBtn').onclick = prev;
   $('stopBtn').onclick = stop;
@@ -721,7 +911,7 @@
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 
-  reload().then(backfillTags).catch(err => toast('저장소를 열 수 없습니다: ' + err.message));
+  reload().then(restore).then(backfillTags).catch(err => toast('저장소를 열 수 없습니다: ' + err.message));
 })();
 </script>
 </body>

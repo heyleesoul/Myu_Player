@@ -1,5 +1,5 @@
 // 앱 화면 파일만 캐시해서 오프라인에서도 열리게 한다 (mp3는 IndexedDB에 있음)
-const CACHE = 'local-music-v3';
+const CACHE = 'local-music-v4';
 const FILES = ['./', 'index.html', 'manifest.json', 'icon-180.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
