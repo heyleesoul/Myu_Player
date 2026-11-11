@@ -353,6 +353,9 @@
   const dbAll = (store = STORE) => tx(store, 'readonly', s => s.getAll());
   const dbPut = (rec, store = STORE) => tx(store, 'readwrite', s => s.put(rec));
   const dbDel = (id, store = STORE) => tx(store, 'readwrite', s => s.delete(id));
+  const dbGet = (id, store = STORE) => tx(store, 'readonly', s => s.get(id));
+  // 주의: 아이폰 Safari는 곡 레코드를 덮어쓰면, 그 전에 읽어 둔 Blob(음악·앨범 아트)과 그 URL이 깨진다.
+  // 그래서 곡 레코드는 되도록 다시 쓰지 않고, 다시 쓴 뒤에는 DB에서 새로 읽어 온다.
 
   // ---------- ID3 태그 읽기 (앨범 아트, 제목, 가수) ----------
   const synch = (b, i) => (b[i] & 0x7f) << 21 | (b[i + 1] & 0x7f) << 14 | (b[i + 2] & 0x7f) << 7 | (b[i + 3] & 0x7f);
@@ -478,7 +481,10 @@
   const collator = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
   const fileBase = n => n.replace(/\.[^.]+$/, '');
   // 사용자가 앱에서 고친 정보(t.edit)가 있으면 그걸 우선, 없으면 mp3 태그, 그것도 없으면 파일 이름
-  const edited = (t, k) => t.edit && t.edit[k] != null ? t.edit[k] : t[k];
+  // 고친 정보는 곡 레코드가 아니라 localStorage 'track-edits' {곡id: {title?, artist?, album?}}에 따로 둔다
+  const edits = loadJson('track-edits', {});
+  const saveEdits = () => saveJson('track-edits', edits);
+  const edited = (t, k) => edits[t.id] && edits[t.id][k] != null ? edits[t.id][k] : t[k];
   const titleOf = t => edited(t, 'title') || fileBase(t.name);
   const artistOf = t => edited(t, 'artist') || '';
   const albumOf = t => edited(t, 'album') || '';
@@ -501,7 +507,7 @@
   // 앨범 아트가 없으면 홀로그램 CD (곡 이름으로 무지개 각도를 바꿈)
   function artHtml(t) {
     const url = artUrl(t);
-    if (url) return `<img src="${url}" alt="" loading="lazy">`;
+    if (url) return `<img src="${url}" alt="" loading="lazy" data-art="${t.id}">`;
     let h = 0;
     for (const c of (t ? t.name : '')) h = Math.imul(h ^ c.charCodeAt(0), 2654435761) >>> 0;
     h %= 360;
@@ -679,7 +685,8 @@
     const n = folderTracks(fid).length;
     if (!confirm(`"${f.name}" 폴더와 안의 ${n}곡을 이 기기에서 삭제할까요?`)) return;
     if (playFolder === fid) stop();
-    for (const t of folderTracks(fid)) await dbDel(t.id);
+    for (const t of folderTracks(fid)) { await dbDel(t.id); delete edits[t.id]; }
+    saveEdits();
     await dbDel(fid, FOLDERS);
     viewFolder = folders.find(x => x.id !== fid).id;
     await reload();
@@ -737,7 +744,8 @@
     const f = folderById(viewFolder);
     if (!list.length || !confirm(`"${f.name}" 폴더의 ${list.length}곡을 모두 이 기기에서 삭제할까요?`)) return;
     if (playFolder === viewFolder) stop();
-    for (const t of list) await dbDel(t.id);
+    for (const t of list) { await dbDel(t.id); delete edits[t.id]; }
+    saveEdits();
     await reload();
   };
 
@@ -746,6 +754,8 @@
     if (!confirm(`"${titleOf(t)}" 을(를) 삭제할까요?`)) return;
     if (currentTrack() && currentTrack().id === id) stop();
     await dbDel(id);
+    delete edits[id];
+    saveEdits();
     await reload();
   }
 
@@ -759,9 +769,13 @@
     }
     if (!folderById(viewFolder)) viewFolder = folders[0].id;
     tracks = (await dbAll()).sort((a, b) => collator.compare(a.name, b.name));
+    let movedEdits = false;
     for (const t of tracks) {
       if (!folderById(t.folder)) { t.folder = folders[0].id; t.tagv = 0; } // 폴더 없는 곡은 첫 폴더로 (backfillTags에서 저장)
+      // v5에서 곡 레코드에 넣었던 수정 정보를 따로 옮긴다 (레코드에 남은 t.edit는 무시)
+      if (t.edit && !(t.id in edits)) { edits[t.id] = t.edit; movedEdits = true; }
     }
+    if (movedEdits) saveEdits();
     const ids = new Set(tracks.map(t => t.id));
     for (const [id, url] of artUrls) if (!ids.has(id)) { URL.revokeObjectURL(url); artUrls.delete(id); }
     if (playFolder) {
@@ -780,7 +794,56 @@
       delete t.tagged;
       await dbPut(t);
     }
-    if (todo.length) { render(); updateMediaSession(); }
+    if (todo.length) {
+      // 덮어쓴 레코드의 Blob은 깨질 수 있으니 DB에서 전부 새로 읽는다
+      for (const t of todo) { const u = artUrls.get(t.id); if (u) URL.revokeObjectURL(u); artUrls.delete(t.id); }
+      shownArtId = null;
+      await reload();
+    }
+  }
+
+  // 앨범 아트가 깨져서 안 보이면 DB에서 다시 읽고, 그래도 안 되면 mp3에서 다시 꺼내 저장한다
+  const repairedArt = new Set();   // 이미 복구를 시도한 깨진 URL (같은 URL로 반복 시도하지 않게)
+  const blobOk = b => b.slice(0, 16).arrayBuffer().then(() => true, () => false);
+  async function repairArt(id, badUrl) {
+    if (badUrl) {
+      if (repairedArt.has(badUrl) || artUrls.get(id) !== badUrl) return;
+      repairedArt.add(badUrl);
+    }
+    const t = tracks.find(x => x.id === id);
+    const rec = t && await dbGet(id);
+    if (!rec) return;
+    let art = rec.art && await blobOk(rec.art) ? rec.art : null;
+    if (!art) {
+      const tags = await readTags(rec.blob);
+      if (!tags.art) return;
+      rec.art = tags.art;
+      await dbPut(rec);
+      const fresh = await dbGet(id);
+      art = fresh.art;
+      t.blob = fresh.blob;
+      if (currentTrack() === t) swapAudioBlob(t);
+    }
+    const u = artUrls.get(id);
+    if (u) URL.revokeObjectURL(u);
+    artUrls.delete(id);
+    t.art = art;
+    shownArtId = null;
+    render();
+    if (currentTrack() === t) updateMediaSession();
+  }
+  document.addEventListener('error', e => {
+    const id = e.target && e.target.dataset && e.target.dataset.art;
+    if (id) repairArt(id, e.target.src);
+  }, true);
+  // 재생 중인 곡의 레코드를 다시 쓴 경우: 새 Blob으로 바꾸고 위치·재생 상태를 이어 간다
+  function swapAudioBlob(t) {
+    const at = audio.currentTime, wasPlaying = !audio.paused;
+    if (currentUrl) URL.revokeObjectURL(currentUrl);
+    currentUrl = URL.createObjectURL(t.blob);
+    pendingSeek = at;
+    audio.src = currentUrl;
+    if (wasPlaying) audio.play().catch(() => {});
   }
 
   // 앱을 다시 열면 마지막으로 듣던 폴더·곡·위치를 재생 화면에 띄운다 (자동 재생은 iOS가 막으므로 일시정지 상태)
@@ -857,14 +920,16 @@
     $('editSheet').hidden = false;
   }
   const closeEdit = () => { $('editSheet').hidden = true; editId = null; };
-  async function saveEdit(edit) {
+  function saveEdit(edit) {
     const t = tracks.find(x => x.id === editId);
     closeEdit();
     if (!t) return;
-    if (edit) t.edit = edit; else delete t.edit;
-    await dbPut(t);
+    // 곡 레코드(음악·앨범 아트)는 건드리지 않는다. 빈 객체는 "고친 것 없음" 표시
+    edits[t.id] = edit || {};
+    saveEdits();
     render();
     if (currentTrack() === t) updateMediaSession();
+    if (!edit) repairArt(t.id);   // 원래대로: 앨범 아트도 mp3에서 다시 확인
     toast(edit ? '정보를 고쳤어요' : '원래 정보로 되돌렸어요');
   }
   $('editForm').onsubmit = e => {
@@ -1016,7 +1081,8 @@
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 
-  reload().then(restore).then(backfillTags).catch(err => toast('저장소를 열 수 없습니다: ' + err.message));
+  // 태그 다시 읽기(레코드 덮어쓰기)를 먼저 끝내고 나서 이어 듣기 곡을 불러온다
+  reload().then(backfillTags).then(restore).catch(err => toast('저장소를 열 수 없습니다: ' + err.message));
 })();
 </script>
 </body>
