@@ -197,8 +197,15 @@
   .chip.new { color: var(--accent); }
   .chip .ic { width: 16px; height: 16px; }
   .chip .ic.more { width: 16px; height: 16px; }
-  #sheet { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; background: rgba(30,34,80,.28); }
-  #sheet[hidden] { display: none; }
+  #sheet, .sheet { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; background: rgba(30,34,80,.28); }
+  #sheet[hidden], .sheet[hidden] { display: none; }
+  .field { display: flex; align-items: center; gap: 10px; margin: 6px 6px; padding: 0 14px; border-radius: 14px;
+    background: var(--glass-strong); border: 1px solid var(--glass-border); }
+  .field span { flex: none; width: 34px; font-size: 13px; color: var(--sub); font-weight: 650; }
+  .field input { flex: 1; min-width: 0; border: 0; background: none; color: var(--text); font-size: 16px; padding: 13px 0; outline: none;
+    -webkit-user-select: text; user-select: text; }
+  .ed-file { font-size: 12px; color: var(--sub); text-align: center; padding: 4px 12px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #list li, .meta { -webkit-touch-callout: none; }
   .sheet-card { width: 100%; margin: 0 12px calc(12px + env(safe-area-inset-bottom)); border-radius: 26px; padding: 8px; }
   .sheet-card .st-title { text-align: center; font-size: 13px; color: var(--sub); padding: 10px 12px 6px; font-weight: 650; }
   .sheet-card button { width: 100%; padding: 15px; font-size: 17px; font-weight: 600; border-radius: 18px; color: var(--accent); }
@@ -267,6 +274,20 @@
     </div>
   </div>
 
+  <!-- 곡 정보 수정 (곡을 길게 누르면 열림) -->
+  <div id="editSheet" class="sheet" hidden>
+    <form class="sheet-card glass" id="editForm">
+      <div class="st-title">곡 정보 수정</div>
+      <label class="field"><span>곡명</span><input id="edTitle" autocomplete="off"></label>
+      <label class="field"><span>가수</span><input id="edArtist" autocomplete="off"></label>
+      <label class="field"><span>앨범</span><input id="edAlbum" autocomplete="off"></label>
+      <div class="ed-file" id="edFile"></div>
+      <button type="submit">저장</button>
+      <button type="button" id="edReset" class="cancel">원래대로</button>
+      <button type="button" id="edCancel" class="cancel">취소</button>
+    </form>
+  </div>
+
   <input type="file" id="fileInput" accept="audio/mpeg,audio/mp3,.mp3,audio/*" multiple hidden>
   <div id="toast"></div>
 
@@ -308,6 +329,7 @@
   // v2: folders 스토어 추가. 곡마다 folder 필드로 어느 폴더에 속하는지 기록한다.
   const DB_NAME = 'local-music', STORE = 'tracks', FOLDERS = 'folders';
   const MAX_FOLDERS = 5, DEFAULT_FOLDER = 'default';
+  const TAG_VERSION = 2;    // 태그에서 읽는 항목이 늘면 올린다 (기존 곡을 다시 읽음)
   const dbReady = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, 2);
     req.onupgradeneeded = () => {
@@ -403,6 +425,7 @@
         if (ver === 4 && ff & 0x01) d = d.subarray(4);
         if (id === 'TIT2' || id === 'TT2') out.title = decodeText(d[0], d.subarray(1));
         else if (id === 'TPE1' || id === 'TP1') out.artist = decodeText(d[0], d.subarray(1));
+        else if (id === 'TALB' || id === 'TAL') out.album = decodeText(d[0], d.subarray(1));
         else if (id === 'APIC' || id === 'PIC') {
           const enc = d[0];
           let i, mime;
@@ -454,8 +477,11 @@
 
   const collator = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
   const fileBase = n => n.replace(/\.[^.]+$/, '');
-  const titleOf = t => t.title || fileBase(t.name);
-  const artistOf = t => t.artist || '';
+  // 사용자가 앱에서 고친 정보(t.edit)가 있으면 그걸 우선, 없으면 mp3 태그, 그것도 없으면 파일 이름
+  const edited = (t, k) => t.edit && t.edit[k] != null ? t.edit[k] : t[k];
+  const titleOf = t => edited(t, 'title') || fileBase(t.name);
+  const artistOf = t => edited(t, 'artist') || '';
+  const albumOf = t => edited(t, 'album') || '';
   const fmt = s => {
     if (!isFinite(s)) return '0:00';
     s = Math.floor(s);
@@ -604,8 +630,8 @@
     if (!('mediaSession' in navigator)) return;
     const t = currentTrack();
     if (!t) return;
-    const album = (folderById(playFolder) || {}).name || '내 음악';
-    const meta = { title: titleOf(t), artist: artistOf(t) || album, album,
+    const folderName = (folderById(playFolder) || {}).name || '내 음악';
+    const meta = { title: titleOf(t), artist: artistOf(t) || folderName, album: albumOf(t) || folderName,
       artwork: [{ src: 'icon-512.png', sizes: '512x512', type: 'image/png' }] };
     navigator.mediaSession.metadata = new MediaMetadata(meta);
     if (t.art) {
@@ -698,7 +724,7 @@
       // File을 그대로 넣으면 원본 경로를 참조할 수 있어 Blob으로 복사해 저장
       const blob = new Blob([await f.arrayBuffer()], { type: f.type || 'audio/mpeg' });
       const tags = await readTags(blob);
-      await dbPut({ id: crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random(), name: f.name, blob, ...tags, tagged: true, folder: fid });
+      await dbPut({ id: crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random(), name: f.name, blob, ...tags, tagv: TAG_VERSION, folder: fid });
       added++;
     }
     await reload();
@@ -734,7 +760,7 @@
     if (!folderById(viewFolder)) viewFolder = folders[0].id;
     tracks = (await dbAll()).sort((a, b) => collator.compare(a.name, b.name));
     for (const t of tracks) {
-      if (!folderById(t.folder)) { t.folder = folders[0].id; t.tagged = false; } // 폴더 없는 곡은 첫 폴더로 (backfillTags에서 저장)
+      if (!folderById(t.folder)) { t.folder = folders[0].id; t.tagv = 0; } // 폴더 없는 곡은 첫 폴더로 (backfillTags에서 저장)
     }
     const ids = new Set(tracks.map(t => t.id));
     for (const [id, url] of artUrls) if (!ids.has(id)) { URL.revokeObjectURL(url); artUrls.delete(id); }
@@ -745,12 +771,13 @@
     render();
   }
 
-  // 이전 버전에서 추가한 곡은 태그를 한 번 읽어 저장해 둔다
+  // 이전 버전에서 추가한 곡은 태그를 한 번 다시 읽어 저장해 둔다 (v2: 앨범명 추가)
   async function backfillTags() {
-    const todo = tracks.filter(t => !t.tagged);
+    const todo = tracks.filter(t => (t.tagv || 0) < TAG_VERSION);
     for (const t of todo) {
-      if (!t.title && !t.artist && !t.art) Object.assign(t, await readTags(t.blob));
-      t.tagged = true;
+      Object.assign(t, await readTags(t.blob));
+      t.tagv = TAG_VERSION;
+      delete t.tagged;
       await dbPut(t);
     }
     if (todo.length) { render(); updateMediaSession(); }
@@ -803,7 +830,7 @@
     let shown = 0, html = '';
     items.forEach(t => {
       const title = titleOf(t), artist = artistOf(t);
-      if (q && !(title + ' ' + artist + ' ' + t.name).toLowerCase().includes(q)) return;
+      if (q && !(title + ' ' + artist + ' ' + albumOf(t) + ' ' + t.name).toLowerCase().includes(q)) return;
       shown++;
       const isCur = cur && cur.id === t.id;
       html += `<li data-id="${t.id}" class="${isCur ? 'current' + (playing ? ' playing' : '') : ''}">
@@ -816,6 +843,66 @@
     list.innerHTML = html;
     $('count').textContent = q ? `${shown} / ${items.length}곡` : `${items.length}곡`;
   }
+  // ---------- 곡 정보 수정 (길게 누르기) ----------
+  // 앱 안에 보이는 정보만 바뀐다. 원본 mp3 파일은 그대로.
+  let editId = null;
+  function openEdit(id) {
+    const t = tracks.find(x => x.id === id);
+    if (!t) return;
+    editId = id;
+    $('edTitle').value = titleOf(t);
+    $('edArtist').value = artistOf(t);
+    $('edAlbum').value = albumOf(t);
+    $('edFile').textContent = t.name;
+    $('editSheet').hidden = false;
+  }
+  const closeEdit = () => { $('editSheet').hidden = true; editId = null; };
+  async function saveEdit(edit) {
+    const t = tracks.find(x => x.id === editId);
+    closeEdit();
+    if (!t) return;
+    if (edit) t.edit = edit; else delete t.edit;
+    await dbPut(t);
+    render();
+    if (currentTrack() === t) updateMediaSession();
+    toast(edit ? '정보를 고쳤어요' : '원래 정보로 되돌렸어요');
+  }
+  $('editForm').onsubmit = e => {
+    e.preventDefault();
+    const t = tracks.find(x => x.id === editId);
+    const v = id => $(id).value.trim();
+    // 원래 값과 같은 칸은 저장하지 않는다 (나중에 원래대로 되돌리기 쉽게)
+    const edit = {};
+    if (v('edTitle') !== (t.title || fileBase(t.name))) edit.title = v('edTitle');
+    if (v('edArtist') !== (t.artist || '')) edit.artist = v('edArtist');
+    if (v('edAlbum') !== (t.album || '')) edit.album = v('edAlbum');
+    saveEdit(Object.keys(edit).length ? edit : null);
+  };
+  $('edReset').onclick = () => saveEdit(null);
+  $('edCancel').onclick = closeEdit;
+  $('editSheet').onclick = e => { if (e.target === $('editSheet')) closeEdit(); };
+
+  let pressTimer, pressed = false, pressXY;
+  function onLongPress(el, getId) {
+    el.addEventListener('pointerdown', e => {
+      const id = getId(e);
+      if (!id) return;
+      pressed = false;
+      pressXY = [e.clientX, e.clientY];
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(() => { pressed = true; openEdit(id); }, 550);
+    });
+    el.addEventListener('pointermove', e => {
+      if (pressXY && Math.hypot(e.clientX - pressXY[0], e.clientY - pressXY[1]) > 10) clearTimeout(pressTimer);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(n => el.addEventListener(n, () => clearTimeout(pressTimer)));
+    el.addEventListener('contextmenu', e => e.preventDefault());
+    // 길게 누른 뒤 손을 뗄 때 생기는 클릭은 무시
+    el.addEventListener('click', e => { if (pressed) { e.stopImmediatePropagation(); pressed = false; } }, true);
+  }
+  onLongPress($('list'), e => { const li = e.target.closest('li[data-id]'); return li && !e.target.closest('[data-del]') ? li.dataset.id : null; });
+  onLongPress(document.querySelector('.meta'), () => currentTrack() && currentTrack().id);
+
   $('list').addEventListener('click', ev => {
     const del = ev.target.closest('[data-del]');
     if (del) return deleteTrack(del.dataset.del);
@@ -837,7 +924,7 @@
       $('miniArt').innerHTML = artHtml(t);
     }
     $('nowTitle').textContent = t ? titleOf(t) : '재생 중인 곡 없음';
-    $('nowArtist').textContent = t ? artistOf(t) : '';
+    $('nowArtist').textContent = t ? [artistOf(t), albumOf(t)].filter(Boolean).join(' · ') : '';
     $('nowLabel').textContent = t ? (folderById(playFolder) || {}).name || '재생 중' : '재생 중';
     $('mini').hidden = !t;
     if (t) {
